@@ -1,7 +1,5 @@
-<<<<<<< HEAD
 # iWordFix-Chrome-externsion-for-grammer
 Chrome Extension which use chatgpt and  Gemini to fix your grammer mistakes
-=======
 # iWordFix Chrome Extension
 
 A Chrome extension that provides AI-powered writing assistance for email responses and grammar correction with seamless Gmail integration.
@@ -145,4 +143,3 @@ This project is open source and available under the MIT License.
 ---
 
 **Note**: This extension requires an active OpenAI API key and may incur costs based on your OpenAI usage. Please review OpenAI's pricing and terms of service.
->>>>>>> main
