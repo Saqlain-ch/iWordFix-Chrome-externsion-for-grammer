@@ -358,6 +358,10 @@ h1 {
     padding-top: 10px;
 }
 
+.provider-cost-stats {
+    margin-top: 14px;
+}
+
 .provider-stat-row {
     display: flex;
     align-items: center;

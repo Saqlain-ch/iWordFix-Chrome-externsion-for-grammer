@@ -57,11 +57,10 @@ const customPromptField = document.getElementById('customPromptField');
 const customPromptInput = document.getElementById('customPrompt');
 const statusMessage = document.getElementById('statusMessage');
 const totalTokensValue = document.getElementById('totalTokensValue');
-const promptTokensValue = document.getElementById('promptTokensValue');
-const completionTokensValue = document.getElementById('completionTokensValue');
-const openaiTokensValue = document.getElementById('openaiTokensValue');
-const geminiTokensValue = document.getElementById('geminiTokensValue');
-const deepseekTokensValue = document.getElementById('deepseekTokensValue');
+const estimatedCostValue = document.getElementById('estimatedCostValue');
+const openaiCostValue = document.getElementById('openaiCostValue');
+const geminiCostValue = document.getElementById('geminiCostValue');
+const deepseekCostValue = document.getElementById('deepseekCostValue');
 const statsUpdatedAt = document.getElementById('statsUpdatedAt');
 
 const apiControls = {
@@ -138,7 +137,7 @@ async function initializeSettings() {
     toggleCustomPromptField(settings.promptMode === 'custom');
 
     Object.entries(apiControls).forEach(([provider, controls]) => {
-        controls.input.value = '';
+        controls.input.value = maskApiKey(settings.apiKeys[provider] || '');
         updateProviderKeyStatus(controls, Boolean(settings.apiKeys[provider]));
     });
 
@@ -227,7 +226,7 @@ async function saveApiKey(provider) {
     }
 
     await chrome.storage.local.set({ [STORAGE_KEYS[provider]]: apiKey });
-    controls.input.value = '';
+    controls.input.value = maskApiKey(apiKey);
     updateProviderKeyStatus(controls, true);
     showStatus(`${controls.label} API key saved.`, 'success');
 }
@@ -291,7 +290,13 @@ async function loadUsageStats() {
                 totalPromptTokens: 0,
                 totalCompletionTokens: 0,
                 totalTokens: 0,
+                totalEstimatedCost: 0,
                 byProvider: {
+                    openai: 0,
+                    gemini: 0,
+                    deepseek: 0
+                },
+                byProviderCost: {
                     openai: 0,
                     gemini: 0,
                     deepseek: 0
@@ -304,20 +309,17 @@ async function loadUsageStats() {
     if (totalTokensValue) {
         totalTokensValue.textContent = formatNumber(stats.totalTokens || 0);
     }
-    if (promptTokensValue) {
-        promptTokensValue.textContent = formatNumber(stats.totalPromptTokens || 0);
+    if (estimatedCostValue) {
+        estimatedCostValue.textContent = formatCurrency(stats.totalEstimatedCost || 0);
     }
-    if (completionTokensValue) {
-        completionTokensValue.textContent = formatNumber(stats.totalCompletionTokens || 0);
+    if (openaiCostValue) {
+        openaiCostValue.textContent = formatCurrency(stats.byProviderCost?.openai || 0);
     }
-    if (openaiTokensValue) {
-        openaiTokensValue.textContent = formatNumber(stats.byProvider?.openai || 0);
+    if (geminiCostValue) {
+        geminiCostValue.textContent = formatCurrency(stats.byProviderCost?.gemini || 0);
     }
-    if (geminiTokensValue) {
-        geminiTokensValue.textContent = formatNumber(stats.byProvider?.gemini || 0);
-    }
-    if (deepseekTokensValue) {
-        deepseekTokensValue.textContent = formatNumber(stats.byProvider?.deepseek || 0);
+    if (deepseekCostValue) {
+        deepseekCostValue.textContent = formatCurrency(stats.byProviderCost?.deepseek || 0);
     }
     if (statsUpdatedAt) {
         statsUpdatedAt.textContent = stats.updatedAt
@@ -360,8 +362,29 @@ function updateProviderKeyStatus(controls, hasKey) {
     controls.statusEl.className = hasKey ? 'provider-status saved' : 'provider-status';
 }
 
+function maskApiKey(apiKey) {
+    if (!apiKey) {
+        return '';
+    }
+
+    if (apiKey.length <= 12) {
+        return apiKey;
+    }
+
+    return `${apiKey.slice(0, 6)}${'*'.repeat(10)}${apiKey.slice(-6)}`;
+}
+
 function formatNumber(value) {
     return new Intl.NumberFormat().format(value);
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 6,
+        maximumFractionDigits: 6
+    }).format(value);
 }
 
 function showStatus(message, type = 'success') {

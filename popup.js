@@ -24,6 +24,27 @@ const DEFAULT_MODELS = {
     deepseek: 'deepseek-chat'
 };
 
+const MODEL_PRICING = {
+    openai: {
+        'gpt-5.4': { inputPerMillion: 3.0, outputPerMillion: 24.0 },
+        'gpt-5.4-mini': { inputPerMillion: 0.75, outputPerMillion: 4.5 },
+        'gpt-5.4-nano': { inputPerMillion: 0.2, outputPerMillion: 0.8 },
+        'gpt-4.1': { inputPerMillion: 2.0, outputPerMillion: 8.0 },
+        'gpt-4.1-mini': { inputPerMillion: 0.4, outputPerMillion: 1.6 },
+        'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
+        'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 }
+    },
+    gemini: {
+        'gemini-2.0-flash': { inputPerMillion: 0.1, outputPerMillion: 0.4 },
+        'gemini-1.5-flash': { inputPerMillion: 0.075, outputPerMillion: 0.3 },
+        'gemini-1.5-pro': { inputPerMillion: 1.25, outputPerMillion: 5.0 }
+    },
+    deepseek: {
+        'deepseek-chat': { inputPerMillion: 0.27, outputPerMillion: 1.1 },
+        'deepseek-reasoner': { inputPerMillion: 0.55, outputPerMillion: 2.19 }
+    }
+};
+
 const activeTabState = {
     supportsEmailContext: false,
     supportsReplyInsert: false
@@ -168,7 +189,7 @@ async function generateResponse() {
 
         const prompt = await constructPrompt(userInput, settings);
         const result = await callAI(apiKey, prompt, settings);
-        await recordUsageStats(settings.provider, result.usage);
+        await recordUsageStats(settings.provider, settings.model, result.usage);
 
         displayResponse(result.text);
     } catch (error) {
@@ -439,10 +460,12 @@ async function callGemini(apiKey, prompt, model) {
     };
 }
 
-async function recordUsageStats(provider, usage) {
+async function recordUsageStats(provider, model, usage) {
     if (!usage || (!usage.totalTokens && !usage.promptTokens && !usage.completionTokens)) {
         return;
     }
+
+    const estimatedCost = calculateEstimatedCost(provider, model, usage);
 
     const currentStats = await new Promise((resolve) => {
         chrome.storage.local.get(['usage_stats'], (result) => {
@@ -450,7 +473,13 @@ async function recordUsageStats(provider, usage) {
                 totalPromptTokens: 0,
                 totalCompletionTokens: 0,
                 totalTokens: 0,
+                totalEstimatedCost: 0,
                 byProvider: {
+                    openai: 0,
+                    gemini: 0,
+                    deepseek: 0
+                },
+                byProviderCost: {
                     openai: 0,
                     gemini: 0,
                     deepseek: 0
@@ -464,19 +493,37 @@ async function recordUsageStats(provider, usage) {
         totalPromptTokens: currentStats.totalPromptTokens + (usage.promptTokens || 0),
         totalCompletionTokens: currentStats.totalCompletionTokens + (usage.completionTokens || 0),
         totalTokens: currentStats.totalTokens + (usage.totalTokens || 0),
+        totalEstimatedCost: (currentStats.totalEstimatedCost || 0) + estimatedCost,
         byProvider: {
             openai: currentStats.byProvider?.openai || 0,
             gemini: currentStats.byProvider?.gemini || 0,
             deepseek: currentStats.byProvider?.deepseek || 0
         },
+        byProviderCost: {
+            openai: currentStats.byProviderCost?.openai || 0,
+            gemini: currentStats.byProviderCost?.gemini || 0,
+            deepseek: currentStats.byProviderCost?.deepseek || 0
+        },
         updatedAt: new Date().toISOString()
     };
 
     nextStats.byProvider[provider] = (nextStats.byProvider[provider] || 0) + (usage.totalTokens || 0);
+    nextStats.byProviderCost[provider] = (nextStats.byProviderCost[provider] || 0) + estimatedCost;
 
     await new Promise((resolve) => {
         chrome.storage.local.set({ usage_stats: nextStats }, resolve);
     });
+}
+
+function calculateEstimatedCost(provider, model, usage) {
+    const pricing = MODEL_PRICING[provider]?.[model];
+    if (!pricing) {
+        return 0;
+    }
+
+    const promptCost = ((usage.promptTokens || 0) / 1000000) * pricing.inputPerMillion;
+    const completionCost = ((usage.completionTokens || 0) / 1000000) * pricing.outputPerMillion;
+    return promptCost + completionCost;
 }
 
 function displayResponse(response) {
