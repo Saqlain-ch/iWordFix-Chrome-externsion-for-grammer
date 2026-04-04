@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "iWordFix",
+  "version": "1.0",
+  "description": "AI-powered writing assistant for email responses and grammar correction with Gmail integration",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://openai.com/*",
+    "https://api.deepseek.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Prompt Assistant"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
