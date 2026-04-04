@@ -19,7 +19,7 @@ const PROVIDER_LABELS = {
 };
 
 const DEFAULT_MODELS = {
-    openai: 'gpt-5.4-mini',
+    openai: 'gpt-5.4-nano',
     gemini: 'gemini-2.0-flash',
     deepseek: 'deepseek-chat'
 };
