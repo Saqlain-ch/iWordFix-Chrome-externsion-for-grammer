@@ -1,0 +1,19 @@
+.red{background-color: red;}
+.green{background-color: greenyellow;}
+.blue{background-color: skyblue;}
+.border-1{border: 1px solid black;}
+
+
+.box-fw{
+    width: 100%;
+}
+.box-1200{
+    width: 100%;
+    width: 1200px;
+}
+.justify-content-center{
+    justify-content: center;
+}
+.flexbox{
+    display: flexbox;
+}
