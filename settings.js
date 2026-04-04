@@ -1,225 +1,398 @@
-// DOM elements
+const MODEL_OPTIONS = {
+    openai: [
+        {
+            group: 'GPT-5',
+            models: [
+                { value: 'gpt-5.4', label: 'GPT-5.4', cost: 'expensive' },
+                { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', cost: 'cheap' },
+                { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', cost: 'very-cheap' }
+            ]
+        },
+        {
+            group: 'GPT-4',
+            models: [
+                { value: 'gpt-4.1', label: 'GPT-4.1', cost: 'expensive' },
+                { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', cost: 'cheap' },
+                { value: 'gpt-4o', label: 'GPT-4o', cost: 'expensive' },
+                { value: 'gpt-4o-mini', label: 'GPT-4o Mini', cost: 'very-cheap' }
+            ]
+        }
+    ],
+    gemini: [
+        {
+            group: 'Gemini',
+            models: [
+                { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', cost: 'cheap' },
+                { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', cost: 'very-cheap' },
+                { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', cost: 'expensive' }
+            ]
+        }
+    ],
+    deepseek: [
+        {
+            group: 'DeepSeek',
+            models: [
+                { value: 'deepseek-chat', label: 'DeepSeek Chat', cost: 'cheap' },
+                { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner', cost: 'expensive' }
+            ]
+        }
+    ]
+};
+
+const STORAGE_KEYS = {
+    provider: 'selected_provider',
+    model: 'selected_model',
+    promptMode: 'prompt_mode',
+    customPrompt: 'custom_prompt',
+    openai: 'openai_api_key',
+    gemini: 'gemini_api_key',
+    deepseek: 'deepseek_api_key'
+};
+
+const providerSelect = document.getElementById('providerSelect');
 const modelSelect = document.getElementById('modelSelect');
-const openaiApiKeyInput = document.getElementById('openaiApiKey');
-const deepseekApiKeyInput = document.getElementById('deepseekApiKey');
-const toggleOpenaiVisibilityBtn = document.getElementById('toggleOpenaiVisibility');
-const toggleDeepseekVisibilityBtn = document.getElementById('toggleDeepseekVisibility');
-const saveOpenaiBtn = document.getElementById('saveOpenaiBtn');
-const saveDeepseekBtn = document.getElementById('saveDeepseekBtn');
-const clearOpenaiBtn = document.getElementById('clearOpenaiBtn');
-const clearDeepseekBtn = document.getElementById('clearDeepseekBtn');
+const modelCostBadge = document.getElementById('modelCostBadge');
+const promptModeSelect = document.getElementById('promptModeSelect');
+const customPromptField = document.getElementById('customPromptField');
+const customPromptInput = document.getElementById('customPrompt');
 const statusMessage = document.getElementById('statusMessage');
+const totalTokensValue = document.getElementById('totalTokensValue');
+const promptTokensValue = document.getElementById('promptTokensValue');
+const completionTokensValue = document.getElementById('completionTokensValue');
+const openaiTokensValue = document.getElementById('openaiTokensValue');
+const geminiTokensValue = document.getElementById('geminiTokensValue');
+const deepseekTokensValue = document.getElementById('deepseekTokensValue');
+const statsUpdatedAt = document.getElementById('statsUpdatedAt');
 
-// Event listeners
-modelSelect.addEventListener('change', saveModelSelection);
-toggleOpenaiVisibilityBtn.addEventListener('click', () => toggleApiKeyVisibility(openaiApiKeyInput, toggleOpenaiVisibilityBtn));
-toggleDeepseekVisibilityBtn.addEventListener('click', () => toggleApiKeyVisibility(deepseekApiKeyInput, toggleDeepseekVisibilityBtn));
-saveOpenaiBtn.addEventListener('click', () => saveApiKey('openai', openaiApiKeyInput));
-saveDeepseekBtn.addEventListener('click', () => saveApiKey('deepseek', deepseekApiKeyInput));
-clearOpenaiBtn.addEventListener('click', () => clearApiKey('openai', openaiApiKeyInput));
-clearDeepseekBtn.addEventListener('click', () => clearApiKey('deepseek', deepseekApiKeyInput));
+const apiControls = {
+    openai: {
+        input: document.getElementById('openaiApiKey'),
+        saveBtn: document.getElementById('saveOpenaiBtn'),
+        clearBtn: document.getElementById('clearOpenaiBtn'),
+        toggleBtn: document.getElementById('toggleOpenaiVisibility'),
+        statusEl: document.getElementById('openaiKeyStatus'),
+        label: 'OpenAI'
+    },
+    gemini: {
+        input: document.getElementById('geminiApiKey'),
+        saveBtn: document.getElementById('saveGeminiBtn'),
+        clearBtn: document.getElementById('clearGeminiBtn'),
+        toggleBtn: document.getElementById('toggleGeminiVisibility'),
+        statusEl: document.getElementById('geminiKeyStatus'),
+        label: 'Gemini'
+    },
+    deepseek: {
+        input: document.getElementById('deepseekApiKey'),
+        saveBtn: document.getElementById('saveDeepseekBtn'),
+        clearBtn: document.getElementById('clearDeepseekBtn'),
+        toggleBtn: document.getElementById('toggleDeepseekVisibility'),
+        statusEl: document.getElementById('deepseekKeyStatus'),
+        label: 'DeepSeek'
+    }
+};
 
-// Initialize settings page
+let statusTimer = null;
 document.addEventListener('DOMContentLoaded', initializeSettings);
+chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes.usage_stats) {
+        loadUsageStats();
+    }
+});
 
-// Initialize the settings page
 async function initializeSettings() {
-    try {
-        // Load existing settings
-        const settings = await getSettings();
-        
-        // Set model selection
-        if (settings.selectedModel) {
-            modelSelect.value = settings.selectedModel;
-        }
-        
-        // Load existing API keys if they exist
-        if (settings.openaiApiKey) {
-            openaiApiKeyInput.value = settings.openaiApiKey;
-        }
-        if (settings.deepseekApiKey) {
-            deepseekApiKeyInput.value = settings.deepseekApiKey;
-        }
-        
+    if (!providerSelect || !modelSelect || !modelCostBadge || !promptModeSelect || !customPromptField || !customPromptInput || !statusMessage) {
+        console.error('Settings initialization failed: missing required DOM nodes.');
+        return;
+    }
 
-        
-        // Show status if API keys are loaded
-        if (settings.openaiApiKey || settings.deepseekApiKey) {
-            showStatus('Settings loaded successfully.', 'success');
+    providerSelect.addEventListener('change', handleProviderChange);
+    modelSelect.addEventListener('change', saveModelSelection);
+    promptModeSelect.addEventListener('change', handlePromptModeChange);
+    customPromptInput.addEventListener('input', debounce(saveCustomPrompt, 300));
+
+    Object.entries(apiControls).forEach(([provider, controls]) => {
+        if (!controls.input || !controls.saveBtn || !controls.clearBtn || !controls.toggleBtn) {
+            return;
         }
-        
-    } catch (error) {
-        console.error('Error initializing settings:', error);
-        showStatus('Failed to load existing settings.', 'error');
+
+        controls.toggleBtn.addEventListener('click', () => toggleApiKeyVisibility(controls.input, controls.toggleBtn));
+        controls.saveBtn.addEventListener('click', () => saveApiKey(provider));
+        controls.clearBtn.addEventListener('click', () => clearApiKey(provider));
+        controls.input.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                saveApiKey(provider);
+            }
+        });
+    });
+
+    populateProviderOptions();
+
+    const settings = await getSettings();
+    const selectedProvider = MODEL_OPTIONS[settings.selectedProvider] ? settings.selectedProvider : 'openai';
+
+    providerSelect.value = selectedProvider;
+    renderModelOptions(selectedProvider, settings.selectedModel);
+
+    promptModeSelect.value = settings.promptMode;
+    customPromptInput.value = settings.customPrompt;
+    toggleCustomPromptField(settings.promptMode === 'custom');
+
+    Object.entries(apiControls).forEach(([provider, controls]) => {
+        controls.input.value = '';
+        updateProviderKeyStatus(controls, Boolean(settings.apiKeys[provider]));
+    });
+
+    await loadUsageStats();
+}
+
+function populateProviderOptions() {
+    providerSelect.innerHTML = Object.keys(MODEL_OPTIONS)
+        .map((provider) => `<option value="${provider}">${formatProviderName(provider)}</option>`)
+        .join('');
+}
+
+function renderModelOptions(provider, selectedModel) {
+    const groups = MODEL_OPTIONS[provider] || [];
+    const models = flattenModels(provider);
+
+    modelSelect.innerHTML = groups
+        .map((group) => `
+            <optgroup label="${group.group}">
+                ${group.models
+                    .map((model) => `<option value="${model.value}">${formatModelOptionLabel(model)}</option>`)
+                    .join('')}
+            </optgroup>
+        `)
+        .join('');
+
+    const defaultModel = models[0]?.value || '';
+    modelSelect.value = models.some((model) => model.value === selectedModel) ? selectedModel : defaultModel;
+    updateModelCostBadge();
+}
+
+async function handleProviderChange() {
+    const provider = providerSelect.value;
+    renderModelOptions(provider);
+
+    await chrome.storage.local.set({
+        [STORAGE_KEYS.provider]: provider,
+        [STORAGE_KEYS.model]: modelSelect.value
+    });
+
+    showStatus(`${formatProviderName(provider)} is now the active provider.`, 'success');
+}
+
+async function saveModelSelection() {
+    await chrome.storage.local.set({ [STORAGE_KEYS.model]: modelSelect.value });
+    updateModelCostBadge();
+    showStatus(`Model updated to ${modelSelect.options[modelSelect.selectedIndex].text}.`, 'success');
+}
+
+async function handlePromptModeChange() {
+    const mode = promptModeSelect.value;
+    toggleCustomPromptField(mode === 'custom');
+    await chrome.storage.local.set({ [STORAGE_KEYS.promptMode]: mode });
+    showStatus(mode === 'custom' ? 'Custom prompt enabled.' : 'Built-in prompt enabled.', 'success');
+}
+
+function toggleCustomPromptField(show) {
+    if (customPromptField) {
+        customPromptField.hidden = !show;
     }
 }
 
+async function saveCustomPrompt() {
+    await chrome.storage.local.set({ [STORAGE_KEYS.customPrompt]: customPromptInput.value.trim() });
+}
 
-
-// Toggle API key visibility
 function toggleApiKeyVisibility(inputElement, buttonElement) {
     const currentType = inputElement.type;
     inputElement.type = currentType === 'password' ? 'text' : 'password';
-    
-    // Update button icon
+
     const svg = buttonElement.querySelector('svg');
     if (currentType === 'password') {
-        // Show eye-off icon
         svg.innerHTML = '<path d="M17.94,17.94C16.23,19.23 14.04,20 12,20C7,20 2.73,16.89 1,12C2.73,7.11 7,4 12,4C14.04,4 16.23,4.77 17.94,6.06L19.36,4.64C20.88,6.15 22,8.09 22,12C22,15.91 20.88,17.85 19.36,19.36L17.94,17.94M12,7C9.24,7 7,9.24 7,12C7,14.76 9.24,17 12,17C14.76,17 17,14.76 17,12C17,9.24 14.76,7 12,7L12,7Z"/>';
     } else {
-        // Show eye icon
         svg.innerHTML = '<path d="M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/>';
     }
 }
 
-// Save API key to Chrome storage
-async function saveApiKey(provider, inputElement) {
-    try {
-        const apiKey = inputElement.value.trim();
-        
-        // Validate API key
-        if (!apiKey) {
-            showStatus('Please enter an API key.', 'error');
-            return;
-        }
-        
-        if (!apiKey.startsWith('sk-')) {
-            showStatus('Invalid API key format. API keys should start with "sk-".', 'error');
-            return;
-        }
-        
-        // Save to Chrome storage
-        const key = provider === 'openai' ? 'openai_api_key' : 'deepseek_api_key';
-        await setApiKey(key, apiKey);
-        
-        // Show success message
-        showStatus(`${provider === 'openai' ? 'OpenAI' : 'DeepSeek'} API key saved successfully!`, 'success');
-        
-        // Clear input for security
-        inputElement.value = '';
-        
-        // Update popup if it's open
-        notifyPopupOfApiKeyChange(provider, apiKey);
-        
-    } catch (error) {
-        console.error('Error saving API key:', error);
-        showStatus('Failed to save API key. Please try again.', 'error');
+async function saveApiKey(provider) {
+    const controls = apiControls[provider];
+    const apiKey = controls.input.value.trim();
+
+    if (!isValidApiKey(provider, apiKey)) {
+        showStatus(`Enter a valid ${controls.label} API key.`, 'error');
+        return;
     }
+
+    await chrome.storage.local.set({ [STORAGE_KEYS[provider]]: apiKey });
+    controls.input.value = '';
+    updateProviderKeyStatus(controls, true);
+    showStatus(`${controls.label} API key saved.`, 'success');
 }
 
-// Clear API key from Chrome storage
-async function clearApiKey(provider, inputElement) {
-    try {
-        // Clear from Chrome storage
-        const key = provider === 'openai' ? 'openai_api_key' : 'deepseek_api_key';
-        await removeApiKey(key);
-        
-        // Clear input
-        inputElement.value = '';
-        
-        // Show success message
-        showStatus(`${provider === 'openai' ? 'OpenAI' : 'DeepSeek'} API key cleared successfully!`, 'success');
-        
-        // Update popup if it's open
-        notifyPopupOfApiKeyChange(provider, null);
-        
-    } catch (error) {
-        console.error('Error clearing API key:', error);
-        showStatus('Failed to clear API key. Please try again.', 'error');
-    }
+async function clearApiKey(provider) {
+    const controls = apiControls[provider];
+    await chrome.storage.local.remove([STORAGE_KEYS[provider]]);
+    controls.input.value = '';
+    updateProviderKeyStatus(controls, false);
+    showStatus(`${controls.label} API key cleared.`, 'success');
 }
 
-// Save model selection
-async function saveModelSelection() {
-    try {
-        const selectedModel = modelSelect.value;
-        await chrome.storage.local.set({ selected_model: selectedModel });
-    } catch (error) {
-        console.error('Error saving model selection:', error);
+function isValidApiKey(provider, apiKey) {
+    if (!apiKey) {
+        return false;
     }
+
+    if (provider === 'gemini') {
+        return apiKey.length >= 20;
+    }
+
+    return apiKey.startsWith('sk-') && apiKey.length > 20;
 }
 
-// Get all settings from Chrome storage
 async function getSettings() {
     return new Promise((resolve) => {
-        chrome.storage.local.get(['openai_api_key', 'deepseek_api_key', 'selected_model'], (result) => {
-            resolve({
-                openaiApiKey: result.openai_api_key,
-                deepseekApiKey: result.deepseek_api_key,
-                selectedModel: result.selected_model || 'openai'
+        chrome.storage.local.get(
+            [
+                STORAGE_KEYS.provider,
+                STORAGE_KEYS.model,
+                STORAGE_KEYS.promptMode,
+                STORAGE_KEYS.customPrompt,
+                STORAGE_KEYS.openai,
+                STORAGE_KEYS.gemini,
+                STORAGE_KEYS.deepseek
+            ],
+            (result) => {
+                const selectedProvider = result[STORAGE_KEYS.provider] || 'openai';
+                const selectedModel = result[STORAGE_KEYS.model] || flattenModels(selectedProvider)[0].value;
+
+                resolve({
+                    selectedProvider,
+                    selectedModel,
+                    promptMode: result[STORAGE_KEYS.promptMode] || 'default',
+                    customPrompt: result[STORAGE_KEYS.customPrompt] || '',
+                    apiKeys: {
+                        openai: result[STORAGE_KEYS.openai] || '',
+                        gemini: result[STORAGE_KEYS.gemini] || '',
+                        deepseek: result[STORAGE_KEYS.deepseek] || ''
+                    }
+                });
+            }
+        );
+    });
+}
+
+async function loadUsageStats() {
+    const stats = await new Promise((resolve) => {
+        chrome.storage.local.get(['usage_stats'], (result) => {
+            resolve(result.usage_stats || {
+                totalPromptTokens: 0,
+                totalCompletionTokens: 0,
+                totalTokens: 0,
+                byProvider: {
+                    openai: 0,
+                    gemini: 0,
+                    deepseek: 0
+                },
+                updatedAt: null
             });
         });
     });
+
+    if (totalTokensValue) {
+        totalTokensValue.textContent = formatNumber(stats.totalTokens || 0);
+    }
+    if (promptTokensValue) {
+        promptTokensValue.textContent = formatNumber(stats.totalPromptTokens || 0);
+    }
+    if (completionTokensValue) {
+        completionTokensValue.textContent = formatNumber(stats.totalCompletionTokens || 0);
+    }
+    if (openaiTokensValue) {
+        openaiTokensValue.textContent = formatNumber(stats.byProvider?.openai || 0);
+    }
+    if (geminiTokensValue) {
+        geminiTokensValue.textContent = formatNumber(stats.byProvider?.gemini || 0);
+    }
+    if (deepseekTokensValue) {
+        deepseekTokensValue.textContent = formatNumber(stats.byProvider?.deepseek || 0);
+    }
+    if (statsUpdatedAt) {
+        statsUpdatedAt.textContent = stats.updatedAt
+            ? `Last updated ${new Date(stats.updatedAt).toLocaleString()}`
+            : 'No usage recorded yet.';
+    }
 }
 
-// Get API key from Chrome storage
-async function getApiKey(key) {
-    return new Promise((resolve) => {
-        chrome.storage.local.get([key], (result) => {
-            resolve(result[key]);
-        });
-    });
+function flattenModels(provider) {
+    return (MODEL_OPTIONS[provider] || []).flatMap((group) => group.models);
 }
 
-// Set API key in Chrome storage
-async function setApiKey(key, apiKey) {
-    return new Promise((resolve) => {
-        chrome.storage.local.set({ [key]: apiKey }, () => {
-            resolve();
-        });
-    });
+function updateModelCostBadge() {
+    if (!modelCostBadge || !modelSelect || !providerSelect) {
+        return;
+    }
+
+    const selectedModel = flattenModels(providerSelect.value).find((model) => model.value === modelSelect.value);
+    const cost = selectedModel?.cost || 'cheap';
+    modelCostBadge.textContent = formatCostLabel(cost);
+    modelCostBadge.className = `cost-badge ${cost}`;
 }
 
-// Remove API key from Chrome storage
-async function removeApiKey(key) {
-    return new Promise((resolve) => {
-        chrome.storage.local.remove([key], () => {
-            resolve();
-        });
-    });
+function formatCostLabel(cost) {
+    if (cost === 'very-cheap') return 'Very cheap';
+    if (cost === 'expensive') return 'Expensive';
+    return 'Cheap';
 }
 
-// Show status message
+function formatModelOptionLabel(model) {
+    return model.label;
+}
+
+function updateProviderKeyStatus(controls, hasKey) {
+    if (!controls.statusEl) {
+        return;
+    }
+
+    controls.statusEl.textContent = hasKey ? 'Key saved in browser' : 'No key saved';
+    controls.statusEl.className = hasKey ? 'provider-status saved' : 'provider-status';
+}
+
+function formatNumber(value) {
+    return new Intl.NumberFormat().format(value);
+}
+
 function showStatus(message, type = 'success') {
+    if (!statusMessage) {
+        return;
+    }
+
+    if (statusTimer) {
+        clearTimeout(statusTimer);
+    }
+
     statusMessage.textContent = message;
-    statusMessage.className = `status-message ${type}`;
-    statusMessage.style.display = 'block';
-    
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        statusMessage.style.display = 'none';
-    }, 5000);
+    statusMessage.className = `status-toast ${type}`;
+    statusMessage.hidden = false;
+
+    statusTimer = setTimeout(() => {
+        statusMessage.hidden = true;
+    }, 3200);
 }
 
-// Notify popup of API key change
-function notifyPopupOfApiKeyChange(provider, apiKey) {
-    // This will trigger the storage change listener in popup.js
-    // No additional action needed as Chrome automatically notifies
-    // all extension contexts of storage changes
+function formatProviderName(provider) {
+    if (provider === 'openai') return 'ChatGPT';
+    if (provider === 'gemini') return 'Gemini';
+    return 'DeepSeek';
 }
 
-// Handle Enter key in API key inputs
-openaiApiKeyInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        saveApiKey('openai', openaiApiKeyInput);
-    }
-});
+function debounce(fn, delay) {
+    let timer = null;
 
-deepseekApiKeyInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        saveApiKey('deepseek', deepseekApiKeyInput);
-    }
-});
-
-// Handle Ctrl/Cmd + S for saving
-document.addEventListener('keydown', (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault();
-        const selectedModel = modelSelect.value;
-        if (selectedModel === 'openai') {
-            saveApiKey('openai', openaiApiKeyInput);
-        } else {
-            saveApiKey('deepseek', deepseekApiKeyInput);
-        }
-    }
-});
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+    };
+}
